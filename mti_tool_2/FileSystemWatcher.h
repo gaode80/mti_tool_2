@@ -52,6 +52,7 @@ public slots:
 private:
 	QString getDoctor(QString spath);                     //从文件中读取医生名字
 	QString getResult(QString spath);                     //从文件中读取检查结果
+	QString getResult_11000(QString spath);               //从文件中读取检查结果(保定宝石花医院)
 	QString getSex(QString spath);                        //从文件中读取患者性别
 	QString getPatientID(QString spath);                  //从病例报告中取出患者的检查号
 	QString getPatientName(QString spath);                //从病例报告中取出患者的姓名

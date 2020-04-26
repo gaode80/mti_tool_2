@@ -1,4 +1,5 @@
 #include "FileSystemWatcher.h"
+#include <windows.h>
 
 #include <QDir>
 #include <QSet>
@@ -13,7 +14,30 @@
 //河北徐水宝石花医院
 void FileSystemWatcher::HEBEI11000_FILE(QString path, QString filename)
 {
+	int ipos = filename.indexOf("_", Qt::CaseInsensitive);   //带有小时,分，秒 的文件，书名是重命名的，略过
+	if (ipos >= 0)
+		return;
+
+	QString sfilepath = path + "/" + filename;
+
 	QString ssuffix = filename.section('.', 1, 1).trimmed();
+	if ("pat" == ssuffix)
+	{
+		Sleep(2000);
+		QDateTime current_time = QDateTime::currentDateTime();
+		QStringList list_name = filename.split('.');
+		QString new_name = list_name.value(0) + "_" + current_time.toString("hh-mm") + "."+list_name.value(1);
+		QString old_path = path + "/" + filename;
+		QString new_path = path + "/" + new_name;
+		int iret = rename(old_path.toLocal8Bit().data(), new_path.toLocal8Bit().data());
+		if (!iret)
+			m_plog->Trace("rename success,oldname = %s,newname=%s", filename.toLocal8Bit().data(), new_name.toLocal8Bit().data());
+		else
+			m_plog->Trace("rename fail,oldname = %s,newname=%s", filename.toLocal8Bit().data(), new_name.toLocal8Bit().data());
+
+		return;
+	}
+
 	if ("txt" != ssuffix)
 	{
 		m_plog->Trace("new filename=%s,suffix is not txt,ignore", filename.toLocal8Bit().data());
@@ -22,8 +46,6 @@ void FileSystemWatcher::HEBEI11000_FILE(QString path, QString filename)
 
 	//获取日期
 	QString sdate = get_date_byfilename(filename);
-
-	QString sfilepath = path + "/" + filename;
 
 	//检查者姓名
     //QString spatient_name = filename.section(' ', 0, 1).trimmed();
@@ -45,7 +67,7 @@ void FileSystemWatcher::HEBEI11000_FILE(QString path, QString filename)
 		spatient_sex = spatient_sex.left(1);
 
 	//获取检查结果
-	QString sdescription = getResult(sfilepath);
+	QString sdescription = getResult_11000(sfilepath);
 
 	//从检查结果文件中获取体检号
 	QString CISID = getPatientID(sfilepath);
@@ -103,13 +125,68 @@ void FileSystemWatcher::HEBEI11000_FILE(QString path, QString filename)
 	QSqlQuery query(m_db);
 	query.prepare(sql);
 
-	m_plog->Trace("begin insert sql,content=%s", sql.toUtf8().data());
+	m_plog->Trace("begin insert sql,content=%s", sql.toLocal8Bit().data());
 	bool bret = query.exec();
 	if (false == bret)    //入库失败
-		m_plog->Trace("insert into T_SYN_ZK_CHECK fail,content = %s", sql.toUtf8().data());
+		m_plog->Trace("insert into T_SYN_ZK_CHECK fail,content = %s", sql.toLocal8Bit().data());
 	else
-		m_plog->Trace("insert into T_SYN_ZK_CHECK success,content = %s", sql.toUtf8().data());
+		m_plog->Trace("insert into T_SYN_ZK_CHECK success,content = %s", sql.toLocal8Bit().data());
+
+	QDateTime current_time = QDateTime::currentDateTime();
+	QStringList list_name = filename.split('.');
+	QString new_name = list_name.value(0)+"_"+current_time.toString("hh-mm")+"."+list_name.value(1);
+	QString old_path = path + "/" + filename;
+	QString new_path = path + "/" + new_name;
+	int iret = rename(old_path.toLocal8Bit().data(), new_path.toLocal8Bit().data());
+	if (!iret)
+		m_plog->Trace("rename success,oldname = %s,newname=%s", filename.toLocal8Bit().data(), new_name.toLocal8Bit().data());
+	else
+		m_plog->Trace("rename fail,oldname = %s,newname=%s", filename.toLocal8Bit().data(), new_name.toLocal8Bit().data());
 
 	//每次都重新连接，用完关闭，是因为用户可能随时在配置窗口修改DSN
 	close_db();     //关闭数据库连接  
+}
+
+QString FileSystemWatcher::getResult_11000(QString spath)
+{
+	QString sdes = "";
+	QTextCodec* codec = QTextCodec::codecForName("GBK");
+
+	QFile qfile(spath);
+	bool bopen = false;
+	bopen = qfile.open(QIODevice::ReadOnly); //| QIODevice::Text
+	if (!bopen)
+	{
+		m_plog->Trace("open file fail in getResult,filepath=%s", spath.toUtf8().data());
+		return sdes;
+	}
+
+	QByteArray t;
+	int itimes = 0;
+	while (!qfile.atEnd())
+	{
+		t = qfile.readLine();
+		QString scontent = codec->toUnicode(t);
+		scontent = scontent.trimmed();
+
+		if ("##" == scontent.left(2) && itimes < 2)
+		{
+			++itimes;
+			continue;
+		}
+		else if (2 == itimes)
+		{
+			QStringList qlist = scontent.split('	');
+			QString sdes_temp = qlist.value(8);
+			if (sdes_temp != "")
+			{
+				sdes += qlist.value(8);	
+				sdes += ";";
+			}
+		}
+	}
+	sdes = sdes.left(sdes.length() - 1);
+	qfile.close();
+
+	return sdes;
 }
